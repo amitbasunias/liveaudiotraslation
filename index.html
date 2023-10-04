@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Speech-to-Speech Translation</title>
+</head>
+<body>
+  <h1>Speech-to-Speech Translation</h1>
+
+    <div id="transcript"></div>
+
+  <div id="output"></div>
+
+  <script>
+    let audioContext, audioStream, recorder, chunks, isRecording, silenceStartTime;
+
+// Initialize audio recording
+navigator.mediaDevices.getUserMedia({ audio: true })
+  .then(stream => {
+    audioContext = new AudioContext();
+    audioStream = stream;
+    const source = audioContext.createMediaStreamSource(audioStream);
+    const processor = audioContext.createScriptProcessor(1024, 1, 1);
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+    processor.onaudioprocess = handleAudio;
+    isRecording = false;
+    chunks = [];
+    console.log('Recording started.');
+  })
+  .catch(error => {
+    console.error('Error accessing microphone:', error);
+  });
+
+function handleAudio(e) {
+  const buffer = e.inputBuffer.getChannelData(0);
+  const abs = buffer.reduce((acc, sample) => acc + Math.abs(sample), 0);
+  const avg = abs / buffer.length;
+  if (avg < 0.05) { // adjust this threshold value as needed
+    if (isRecording) {
+      const silenceTime = (new Date()).getTime() - silenceStartTime;
+      if (silenceTime >= 2000) { // 2 seconds of silence detected, stop recording
+        console.log('2 seconds of silence detected. Recording stopped.');
+        isRecording = false;
+        recorder.stop();
+      }
+    }
+  } else {
+    if (!isRecording) {
+      console.log('Speech detected. Recording started.');
+      isRecording = true;
+      chunks = [];
+      recorder = new MediaRecorder(audioStream);
+      recorder.ondataavailable = e => chunks.push(e.data);
+      recorder.onstop = handleSpeechChunk;
+      recorder.start();
+    }
+    silenceStartTime = (new Date()).getTime();
+  }
+}
+
+function handleSpeechChunk() {
+  if (chunks.length) {
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    const file = new File([blob], 'recording.webm', { type: 'audio/webm' });
+    sendToAPI(file);
+  }
+}
+
+function sendToAPI(file) {
+  const formData = new FormData();
+  formData.append('audio', file);
+  formData.append("language", "bn");
+  fetch("http://127.0.0.1:5000/translate", {
+        method: "POST",
+        body: formData
+      })
+      .then(function(response) {
+        return response.blob();
+      })
+      .then(function(blob) {
+        var audioUrl = URL.createObjectURL(blob);
+        var audioElement = document.createElement("audio");
+        audioElement.src = audioUrl;
+        audioElement.controls = true;
+        audioElement.autoplay = true;
+
+
+        var outputDiv = document.getElementById("output");
+        outputDiv.innerHTML = "";
+        outputDiv.appendChild(audioElement);
+        startRecording();
+      })
+
+
+    //      const transcriptionElement = document.getElementById('transcription');
+    .catch(error => {
+  });
+     //    transcriptionElement.textContent += transcription + " ";
+}
+  </script>
+</body>
+</html>

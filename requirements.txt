@@ -1,0 +1,6 @@
+Flask
+SpeechRecognition
+gTTS
+translate
+flask_cors
+pydub
